@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 
-from transformers import ViTFeatureExtractor, AutoModelForImageClassification
+from transformers import ViTFeatureExtractor, ViTForImageClassification
 from torchvision import transforms
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchinfo import summary
+import torch.nn.functional as F
 from tqdm import tqdm
 import os
 import cv2
 from PIL import Image
 
+class ViTForImageClassificationWithSoftmax(ViTForImageClassification):
+    def forward(self, pixel_values, labels=None):
+        outputs = super().forward(pixel_values, labels)
+        logits = outputs.logits
+        softmax_logits = F.softmax(logits, dim=-1)
+        return softmax_logits
 
 class BlinkDataset(Dataset):
     def __init__(self, root_dir, feature_extractor=None, transform=None):
@@ -60,7 +67,7 @@ def main():
     ])
 
     model_name = "google/vit-base-patch16-224-in21k"
-    model = AutoModelForImageClassification.from_pretrained(model_name)
+    model = ViTForImageClassification.from_pretrained(model_name, num_labels=2)
     feature_extractor = ViTFeatureExtractor.from_pretrained(model_name)
 
     finetuneData = BlinkDataset(os.curdir + '/data', feature_extractor=feature_extractor, transform=transform)
@@ -86,11 +93,13 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), lr = 1e-5)
 
-    model.classifier = torch.nn.Linear(model.config.hidden_size, 2)
-    model.load_state_dict(torch.load('./model.pth'))
+    # model.classifier = torch.nn.Softmax(2)
+    # model.load_state_dict(torch.load('./model.pth'))
+    model.load_state_dict(torch.load('./model_new.pth'))
     model.train()
     model.to(device)
 
+    print(model)
     summary(model, input_size=(64, 3, 224, 224))
 
     # for epoch in range(1):
@@ -105,7 +114,7 @@ def main():
     #         loss.backward()
     #         optimizer.step()
 
-    #     torch.save(model.state_dict(), './model.pth')
+    #     torch.save(model.state_dict(), './model_new.pth')
 
     model.eval()
     correct = 0
@@ -115,9 +124,9 @@ def main():
             input = images["pixel_values"]
             input = input.to(device)
             labels = labels.to(device)
-            outputs = model(input)
-
-            predicted_class_idx = torch.argmax(outputs.logits, dim=-1)
+            outputs = model(input).logits
+            
+            predicted_class_idx = outputs.argmax(dim=1)
 
             correct += (predicted_class_idx == labels).sum().item()
 
