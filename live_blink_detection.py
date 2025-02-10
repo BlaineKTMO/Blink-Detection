@@ -40,7 +40,7 @@ def main():
         prediction = output.argmax(dim=1)
         print(output)
 
-        if output[0][1] > 0.15:
+        if output[0][1] > 0.12:
             count += 1
             print("Blink Detected")
 
